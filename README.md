@@ -1,75 +1,97 @@
-<?php
-/**
- * 1000x1000 JPG 규격화 프로그램
- */
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>이미지 1000x1000 규격화 도구</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+        #drop-zone { width: 100%; max-width: 500px; height: 200px; border: 3px dashed #ccc; margin: 20px auto; display: flex; align-items: center; justify-content: center; background: white; border-radius: 10px; cursor: pointer; }
+        #drop-zone.hover { border-color: #3498db; background: #ebf5fb; }
+        .btn { padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        #result-container { margin-top: 30px; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; }
+        canvas { display: none; }
+        .preview-item { background: white; padding: 10px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .preview-item img { width: 100%; height: auto; border-radius: 3px; }
+        .preview-item p { font-size: 12px; margin: 5px 0; overflow: hidden; text-overflow: ellipsis; }
+    </style>
+</head>
+<body>
 
-// 1. 설정
-$input_folder  = 'input/';   // 원본 이미지를 넣는 폴더
-$output_folder = 'output/';  // 변환된 이미지가 저장될 폴더
-$target_w      = 1000;       // 가로 규격
-$target_h      = 1000;       // 세로 규격
-$jpg_quality   = 90;         // 출력 화질 (0~100)
+    <h1>이미지 규격화 (1000x1000 JPG)</h1>
+    <p>사진을 아래 영역에 드래그하거나 클릭해서 선택하세요.</p>
 
-// 폴더가 없으면 생성
-if (!is_dir($output_folder)) mkdir($output_folder, 0777, true);
-if (!is_dir($input_folder))  mkdir($input_folder, 0777, true);
+    <div id="drop-zone">파일을 여기에 끌다 놓으세요</div>
+    <input type="file" id="file-input" multiple accept="image/*" style="display: none;">
+    <button class="btn" onclick="document.getElementById('file-input').click()">사진 선택하기</button>
 
-// 2. 파일 스캔
-$files = scandir($input_folder);
-$process_count = 0;
+    <div id="result-container"></div>
 
-echo "<h2>이미지 규격화 작업 시작</h2>";
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const resultContainer = document.getElementById('result-container');
 
-foreach ($files as $file) {
-    if ($file == '.' || $file == '..') continue;
+        // 드래그 앤 드롭 이벤트
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('hover'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('hover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('hover');
+            processFiles(e.dataTransfer.files);
+        });
 
-    $file_path = $input_folder . $file;
-    $extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+        fileInput.addEventListener('change', (e) => processFiles(e.target.files));
 
-    // 처리 가능 이미지 확장자 확인
-    if (in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
-        
-        // 이미지 타입에 따른 리소스 생성
-        switch ($extension) {
-            case 'jpg': case 'jpeg': $src = imagecreatefromjpeg($file_path); break;
-            case 'png':  $src = imagecreatefrompng($file_path); break;
-            case 'gif':  $src = imagecreatefromgif($file_path); break;
-            case 'webp': $src = imagecreatefromwebp($file_path); break;
-            default: continue 2;
+        function processFiles(files) {
+            Array.from(files).forEach(file => {
+                if (!file.type.startsWith('image/')) return;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        canvas.width = 1000;
+                        canvas.height = 1000;
+
+                        // 배경 흰색 채우기
+                        ctx.fillStyle = "white";
+                        ctx.fillRect(0, 0, 1000, 1000);
+
+                        // 비율 유지하며 중앙 배치 계산
+                        const scale = Math.min(1000 / img.width, 1000 / img.height);
+                        const x = (1000 - img.width * scale) / 2;
+                        const y = (1000 - img.height * scale) / 2;
+                        const width = img.width * scale;
+                        const height = img.height * scale;
+
+                        ctx.drawImage(img, x, y, width, height);
+
+                        // JPG로 변환 및 다운로드 링크 생성
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                        displayResult(dataUrl, file.name);
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
         }
 
-        if (!$src) continue;
-
-        // 3. 1000x1000 흰색 배경 캔버스 생성
-        $dst = imagecreatetruecolor($target_w, $target_h);
-        $white = imagecolorallocate($dst, 255, 255, 255);
-        imagefill($dst, 0, 0, $white);
-
-        // 4. 비율 유지 리사이징 계산 (중앙 배치)
-        $old_w = imagesx($src);
-        $old_h = imagesy($src);
-        $scale = min($target_w / $old_w, $target_h / $old_h);
-        
-        $new_w = (int)($old_w * $scale);
-        $new_h = (int)($old_h * $scale);
-        $dst_x = (int)(($target_w - $new_w) / 2);
-        $dst_y = (int)(($target_h - $new_h) / 2);
-
-        // 이미지 복사 및 크기 조절
-        imagecopyresampled($dst, $src, $dst_x, $dst_y, 0, 0, $new_w, $new_h, $old_w, $old_h);
-
-        // 5. JPG 파일로 저장 (파일명 그대로 유지하되 확장자만 .jpg로 변경)
-        $new_filename = pathinfo($file, PATHINFO_FILENAME) . '.jpg';
-        imagejpeg($dst, $output_folder . $new_filename, $jpg_quality);
-
-        // 메모리 해제
-        imagedestroy($src);
-        imagedestroy($dst);
-        
-        echo "완료: {$file} -> {$new_filename}<br>";
-        $process_count++;
-    }
-}
-
-echo "<hr><p>총 {$process_count}개의 파일이 변환 완료되었습니다.</p>";
-?>
+        function displayResult(dataUrl, originalName) {
+            const div = document.createElement('div');
+            div.className = 'preview-item';
+            
+            const newName = originalName.substring(0, originalName.lastIndexOf('.')) || originalName;
+            
+            div.innerHTML = `
+                <img src="${dataUrl}">
+                <p>${newName}.jpg</p>
+                <a href="${dataUrl}" download="${newName}.jpg" style="font-size: 12px; color: #3498db;">다운로드</a>
+            `;
+            resultContainer.appendChild(div);
+        }
+    </script>
+</body>
+</html>
