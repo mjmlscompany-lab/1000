@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>이미지 1000x1000 규격화 도구</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 50px; background: #f4f4f9; }
+        #drop-zone { border: 3px dashed #aaa; padding: 50px; width: 300px; margin: 20px auto; cursor: pointer; background: white; border-radius: 15px; }
+        #drop-zone.hover { border-color: #3498db; background: #ebf5fb; }
+        .btn { padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        #result-container { margin-top: 30px; display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; }
+        .preview { border: 1px solid #ddd; padding: 5px; background: white; }
+        canvas { display: none; }
+    </style>
+</head>
+<body>
+
+    <h1>이미지 1000x1000 JPG 변환기</h1>
+    <p>이미지를 아래 박스에 끌어다 놓으세요. 자동으로 1000x1000 JPG로 변환됩니다.</p>
+
+    <div id="drop-zone">여기에 이미지를 드롭하거나 클릭하세요</div>
+    <input type="file" id="file-input" multiple accept="image/*" style="display: none;">
+
+    <div id="result-container"></div>
+    <canvas id="canvas" width="1000" height="1000"></canvas>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const resultContainer = document.getElementById('result-container');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        dropZone.onclick = () => fileInput.click();
+
+        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('hover'); };
+        dropZone.ondragleave = () => dropZone.classList.remove('hover');
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('hover');
+            handleFiles(e.dataTransfer.files);
+        };
+
+        fileInput.onchange = (e) => handleFiles(e.target.files);
+
+        function handleFiles(files) {
+            for (let file of files) {
+                if (!file.type.startsWith('image/')) continue;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => processImage(img, file.name);
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function processImage(img, fileName) {
+            // 캔버스 초기화 (흰색 배경)
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, 1000, 1000);
+
+            // 비율 유지 계산
+            let scale = Math.min(1000 / img.width, 1000 / img.height);
+            let w = img.width * scale;
+            let h = img.height * scale;
+            let x = (1000 - w) / 2;
+            let y = (1000 - h) / 2;
+
+            ctx.drawImage(img, x, y, w, h);
+
+            // JPG로 변환 및 다운로드 링크 생성
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+            const baseName = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
+            
+            const div = document.createElement('div');
+            div.className = 'preview';
+            div.innerHTML = `
+                <img src="${dataUrl}" width="150"><br>
+                <a href="${dataUrl}" download="${baseName}_1000.jpg">
+                    <button class="btn" style="margin-top:5px; font-size:12px;">다운로드</button>
+                </a>
+            `;
+            resultContainer.appendChild(div);
+        }
+    </script>
+</body>
+</html>
