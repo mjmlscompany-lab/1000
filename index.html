@@ -3,18 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>1000x1000 자동 변환기</title>
+    <title>1000x1000 일괄 변환기 (ZIP 지원)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         body { font-family: 'Malgun Gothic', sans-serif; text-align: center; padding: 30px; background: #f8f9fa; color: #333; }
-        h1 { color: #2c3e50; }
         .container { max-width: 800px; margin: 0 auto; }
         #drop-zone { 
             border: 3px dashed #3498db; padding: 60px; margin: 20px auto; 
             cursor: pointer; background: white; border-radius: 20px;
             transition: all 0.3s;
         }
-        #drop-zone:hover, #drop-zone.hover { background: #e3f2fd; border-color: #2980b9; }
-        #status { font-weight: bold; color: #2980b9; margin: 10px 0; }
+        #drop-zone:hover { background: #e3f2fd; border-color: #2980b9; }
+        #status { font-weight: bold; color: #e67e22; margin: 10px 0; font-size: 1.2em; }
         #result-container { 
             display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); 
             gap: 15px; margin-top: 30px; 
@@ -27,10 +27,10 @@
 <body>
 
 <div class="container">
-    <h1>📸 1000px JPG 일괄 변환기</h1>
-    <p>사진을 여러 장 선택하거나 박스에 끌어다 놓으세요.<br><strong>(변환 즉시 자동 다운로드됩니다!)</strong></p>
+    <h1>📸 스마트 이미지 변환기</h1>
+    <p>1개는 바로 다운로드, <strong>2개 이상은 ZIP으로 압축</strong>하여 내려받습니다.</p>
 
-    <div id="drop-zone">여기에 여러 장의 사진을 드롭하거나 클릭하세요</div>
+    <div id="drop-zone">이미지들을 여기에 드래그하거나 클릭하세요</div>
     <input type="file" id="file-input" multiple accept="image/*" style="display: none;">
     
     <div id="status"></div>
@@ -48,70 +48,78 @@
     const ctx = canvas.getContext('2d');
 
     dropZone.onclick = () => fileInput.click();
-
     dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('hover'); };
     dropZone.ondragleave = () => dropZone.classList.remove('hover');
-    dropZone.ondrop = (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('hover');
-        handleFiles(e.dataTransfer.files);
-    };
-
+    dropZone.ondrop = (e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); };
     fileInput.onchange = (e) => handleFiles(e.target.files);
 
     async function handleFiles(files) {
-        if (files.length === 0) return;
+        const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+        if (imageFiles.length === 0) return;
+
+        status.innerText = "🚀 변환 작업 중...";
+        resultContainer.innerHTML = '';
         
-        status.innerText = `${files.length}개의 파일을 처리 중...`;
-        resultContainer.innerHTML = ''; // 이전 목록 초기화
+        const zip = new JSZip();
+        let processedCount = 0;
 
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            if (!file.type.startsWith('image/')) continue;
+        for (let i = 0; i < imageFiles.length; i++) {
+            const file = imageFiles[i];
+            const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+            
+            // 이미지 변환 대기
+            const blob = await processImage(file);
+            
+            // 미리보기 표시
+            const url = URL.createObjectURL(blob);
+            const previewDiv = document.createElement('div');
+            previewDiv.className = 'preview-box';
+            previewDiv.innerHTML = `<img src="${url}"><br><span>${baseName}.jpg</span>`;
+            resultContainer.appendChild(previewDiv);
 
-            await processAndDownload(file, i);
+            if (imageFiles.length === 1) {
+                // 1장일 때는 바로 다운로드
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${baseName}.jpg`;
+                link.click();
+            } else {
+                // 2장 이상일 때는 ZIP 객체에 추가
+                zip.file(`${baseName}.jpg`, blob);
+            }
+            processedCount++;
         }
-        status.innerText = "✅ 모든 변환 및 다운로드 완료!";
+
+        if (imageFiles.length >= 2) {
+            status.innerText = "📦 ZIP 압축 파일 생성 중...";
+            const content = await zip.generateAsync({type: "blob"});
+            const zipLink = document.createElement('a');
+            zipLink.href = URL.createObjectURL(content);
+            zipLink.download = "images_1000x1000.zip";
+            zipLink.click();
+        }
+
+        status.innerText = `✅ 총 ${processedCount}개의 파일 처리 완료!`;
     }
 
-    function processAndDownload(file, index) {
+    function processImage(file) {
         return new Promise((resolve) => {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const img = new Image();
                 img.onload = () => {
-                    // 1. 캔버스 배경 채우기
                     ctx.fillStyle = "white";
                     ctx.fillRect(0, 0, 1000, 1000);
-
-                    // 2. 비율 계산 및 중앙 배치
                     let scale = Math.min(1000 / img.width, 1000 / img.height);
                     let w = img.width * scale;
                     let h = img.height * scale;
                     let x = (1000 - w) / 2;
                     let y = (1000 - h) / 2;
-
                     ctx.drawImage(img, x, y, w, h);
-
-                    // 3. JPG 데이터 생성
-                    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
                     
-                    // 4. 미리보기 화면 표시
-                    const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || `image_${index}`;
-                    const previewDiv = document.createElement('div');
-                    previewDiv.className = 'preview-box';
-                    previewDiv.innerHTML = `<img src="${dataUrl}"><br><span>${baseName}.jpg</span>`;
-                    resultContainer.appendChild(previewDiv);
-
-                    // 5. 자동 다운로드 실행
-                    const link = document.createElement('a');
-                    link.href = dataUrl;
-                    link.download = `${baseName}_1000x1000.jpg`;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-
-                    resolve();
+                    canvas.toBlob((blob) => {
+                        resolve(blob);
+                    }, "image/jpeg", 0.92);
                 };
                 img.src = e.target.result;
             };
