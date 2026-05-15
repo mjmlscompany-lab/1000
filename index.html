@@ -3,88 +3,121 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>이미지 1000x1000 규격화 도구</title>
+    <title>1000x1000 자동 변환기</title>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 50px; background: #f4f4f9; }
-        #drop-zone { border: 3px dashed #aaa; padding: 50px; width: 300px; margin: 20px auto; cursor: pointer; background: white; border-radius: 15px; }
-        #drop-zone.hover { border-color: #3498db; background: #ebf5fb; }
-        .btn { padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
-        #result-container { margin-top: 30px; display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; }
-        .preview { border: 1px solid #ddd; padding: 5px; background: white; }
+        body { font-family: 'Malgun Gothic', sans-serif; text-align: center; padding: 30px; background: #f8f9fa; color: #333; }
+        h1 { color: #2c3e50; }
+        .container { max-width: 800px; margin: 0 auto; }
+        #drop-zone { 
+            border: 3px dashed #3498db; padding: 60px; margin: 20px auto; 
+            cursor: pointer; background: white; border-radius: 20px;
+            transition: all 0.3s;
+        }
+        #drop-zone:hover, #drop-zone.hover { background: #e3f2fd; border-color: #2980b9; }
+        #status { font-weight: bold; color: #2980b9; margin: 10px 0; }
+        #result-container { 
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); 
+            gap: 15px; margin-top: 30px; 
+        }
+        .preview-box { background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); font-size: 11px; }
+        .preview-box img { width: 100%; border-radius: 4px; }
         canvas { display: none; }
     </style>
 </head>
 <body>
 
-    <h1>이미지 1000x1000 JPG 변환기</h1>
-    <p>이미지를 아래 박스에 끌어다 놓으세요. 자동으로 1000x1000 JPG로 변환됩니다.</p>
+<div class="container">
+    <h1>📸 1000px JPG 일괄 변환기</h1>
+    <p>사진을 여러 장 선택하거나 박스에 끌어다 놓으세요.<br><strong>(변환 즉시 자동 다운로드됩니다!)</strong></p>
 
-    <div id="drop-zone">여기에 이미지를 드롭하거나 클릭하세요</div>
+    <div id="drop-zone">여기에 여러 장의 사진을 드롭하거나 클릭하세요</div>
     <input type="file" id="file-input" multiple accept="image/*" style="display: none;">
-
+    
+    <div id="status"></div>
     <div id="result-container"></div>
-    <canvas id="canvas" width="1000" height="1000"></canvas>
+</div>
 
-    <script>
-        const dropZone = document.getElementById('drop-zone');
-        const fileInput = document.getElementById('file-input');
-        const resultContainer = document.getElementById('result-container');
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
+<canvas id="canvas" width="1000" height="1000"></canvas>
 
-        dropZone.onclick = () => fileInput.click();
+<script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const resultContainer = document.getElementById('result-container');
+    const status = document.getElementById('status');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
 
-        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('hover'); };
-        dropZone.ondragleave = () => dropZone.classList.remove('hover');
-        dropZone.ondrop = (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('hover');
-            handleFiles(e.dataTransfer.files);
-        };
+    dropZone.onclick = () => fileInput.click();
 
-        fileInput.onchange = (e) => handleFiles(e.target.files);
+    dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('hover'); };
+    dropZone.ondragleave = () => dropZone.classList.remove('hover');
+    dropZone.ondrop = (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('hover');
+        handleFiles(e.dataTransfer.files);
+    };
 
-        function handleFiles(files) {
-            for (let file of files) {
-                if (!file.type.startsWith('image/')) continue;
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const img = new Image();
-                    img.onload = () => processImage(img, file.name);
-                    img.src = e.target.result;
+    fileInput.onchange = (e) => handleFiles(e.target.files);
+
+    async function handleFiles(files) {
+        if (files.length === 0) return;
+        
+        status.innerText = `${files.length}개의 파일을 처리 중...`;
+        resultContainer.innerHTML = ''; // 이전 목록 초기화
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (!file.type.startsWith('image/')) continue;
+
+            await processAndDownload(file, i);
+        }
+        status.innerText = "✅ 모든 변환 및 다운로드 완료!";
+    }
+
+    function processAndDownload(file, index) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    // 1. 캔버스 배경 채우기
+                    ctx.fillStyle = "white";
+                    ctx.fillRect(0, 0, 1000, 1000);
+
+                    // 2. 비율 계산 및 중앙 배치
+                    let scale = Math.min(1000 / img.width, 1000 / img.height);
+                    let w = img.width * scale;
+                    let h = img.height * scale;
+                    let x = (1000 - w) / 2;
+                    let y = (1000 - h) / 2;
+
+                    ctx.drawImage(img, x, y, w, h);
+
+                    // 3. JPG 데이터 생성
+                    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+                    
+                    // 4. 미리보기 화면 표시
+                    const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || `image_${index}`;
+                    const previewDiv = document.createElement('div');
+                    previewDiv.className = 'preview-box';
+                    previewDiv.innerHTML = `<img src="${dataUrl}"><br><span>${baseName}.jpg</span>`;
+                    resultContainer.appendChild(previewDiv);
+
+                    // 5. 자동 다운로드 실행
+                    const link = document.createElement('a');
+                    link.href = dataUrl;
+                    link.download = `${baseName}_1000x1000.jpg`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+
+                    resolve();
                 };
-                reader.readAsDataURL(file);
-            }
-        }
-
-        function processImage(img, fileName) {
-            // 캔버스 초기화 (흰색 배경)
-            ctx.fillStyle = "white";
-            ctx.fillRect(0, 0, 1000, 1000);
-
-            // 비율 유지 계산
-            let scale = Math.min(1000 / img.width, 1000 / img.height);
-            let w = img.width * scale;
-            let h = img.height * scale;
-            let x = (1000 - w) / 2;
-            let y = (1000 - h) / 2;
-
-            ctx.drawImage(img, x, y, w, h);
-
-            // JPG로 변환 및 다운로드 링크 생성
-            const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
-            const baseName = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
-            
-            const div = document.createElement('div');
-            div.className = 'preview';
-            div.innerHTML = `
-                <img src="${dataUrl}" width="150"><br>
-                <a href="${dataUrl}" download="${baseName}_1000.jpg">
-                    <button class="btn" style="margin-top:5px; font-size:12px;">다운로드</button>
-                </a>
-            `;
-            resultContainer.appendChild(div);
-        }
-    </script>
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+</script>
 </body>
 </html>
