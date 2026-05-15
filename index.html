@@ -3,34 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>1000x1000 일괄 변환기 (ZIP 지원)</title>
+    <title>1000x1000 꽉 찬 변환기</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        body { font-family: 'Malgun Gothic', sans-serif; text-align: center; padding: 30px; background: #f8f9fa; color: #333; }
+        body { font-family: 'Malgun Gothic', sans-serif; text-align: center; padding: 30px; background: #f0f2f5; color: #333; }
         .container { max-width: 800px; margin: 0 auto; }
         #drop-zone { 
-            border: 3px dashed #3498db; padding: 60px; margin: 20px auto; 
+            border: 3px dashed #2ecc71; padding: 60px; margin: 20px auto; 
             cursor: pointer; background: white; border-radius: 20px;
             transition: all 0.3s;
         }
-        #drop-zone:hover { background: #e3f2fd; border-color: #2980b9; }
-        #status { font-weight: bold; color: #e67e22; margin: 10px 0; font-size: 1.2em; }
+        #drop-zone:hover { background: #e8faf0; border-color: #27ae60; }
+        #status { font-weight: bold; color: #27ae60; margin: 10px 0; font-size: 1.2em; }
         #result-container { 
             display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); 
             gap: 15px; margin-top: 30px; 
         }
         .preview-box { background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); font-size: 11px; }
-        .preview-box img { width: 100%; border-radius: 4px; }
+        .preview-box img { width: 100%; border-radius: 4px; border: 1px solid #eee; }
         canvas { display: none; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>📸 스마트 이미지 변환기</h1>
-    <p>1개는 바로 다운로드, <strong>2개 이상은 ZIP으로 압축</strong>하여 내려받습니다.</p>
+    <h1>🖼️ 여백 없는 1000px 변환기</h1>
+    <p>이미지를 꽉 채워서(Center Crop) 1000x1000 JPG로 변환합니다.</p>
 
-    <div id="drop-zone">이미지들을 여기에 드래그하거나 클릭하세요</div>
+    <div id="drop-zone">사진을 드래그하거나 클릭하세요 (여러 장 가능)</div>
     <input type="file" id="file-input" multiple accept="image/*" style="display: none;">
     
     <div id="status"></div>
@@ -49,7 +49,6 @@
 
     dropZone.onclick = () => fileInput.click();
     dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('hover'); };
-    dropZone.ondragleave = () => dropZone.classList.remove('hover');
     dropZone.ondrop = (e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); };
     fileInput.onchange = (e) => handleFiles(e.target.files);
 
@@ -57,69 +56,64 @@
         const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
         if (imageFiles.length === 0) return;
 
-        status.innerText = "🚀 변환 작업 중...";
+        status.innerText = "⏳ 꽉 채우는 중...";
         resultContainer.innerHTML = '';
-        
         const zip = new JSZip();
-        let processedCount = 0;
 
         for (let i = 0; i < imageFiles.length; i++) {
             const file = imageFiles[i];
             const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
             
-            // 이미지 변환 대기
-            const blob = await processImage(file);
-            
-            // 미리보기 표시
+            const blob = await processImageFill(file);
             const url = URL.createObjectURL(blob);
+
             const previewDiv = document.createElement('div');
             previewDiv.className = 'preview-box';
             previewDiv.innerHTML = `<img src="${url}"><br><span>${baseName}.jpg</span>`;
             resultContainer.appendChild(previewDiv);
 
             if (imageFiles.length === 1) {
-                // 1장일 때는 바로 다운로드
                 const link = document.createElement('a');
                 link.href = url;
                 link.download = `${baseName}.jpg`;
                 link.click();
             } else {
-                // 2장 이상일 때는 ZIP 객체에 추가
                 zip.file(`${baseName}.jpg`, blob);
             }
-            processedCount++;
         }
 
         if (imageFiles.length >= 2) {
-            status.innerText = "📦 ZIP 압축 파일 생성 중...";
+            status.innerText = "📦 압축 파일 생성 중...";
             const content = await zip.generateAsync({type: "blob"});
             const zipLink = document.createElement('a');
             zipLink.href = URL.createObjectURL(content);
-            zipLink.download = "images_1000x1000.zip";
+            zipLink.download = "converted_images.zip";
             zipLink.click();
         }
-
-        status.innerText = `✅ 총 ${processedCount}개의 파일 처리 완료!`;
+        status.innerText = `✅ 변환 완료!`;
     }
 
-    function processImage(file) {
+    function processImageFill(file) {
         return new Promise((resolve) => {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const img = new Image();
                 img.onload = () => {
-                    ctx.fillStyle = "white";
-                    ctx.fillRect(0, 0, 1000, 1000);
-                    let scale = Math.min(1000 / img.width, 1000 / img.height);
+                    // 1000x1000 캔버스 준비
+                    ctx.clearRect(0, 0, 1000, 1000);
+
+                    // 꽉 채우기 위한 계산 (Cover 방식)
+                    let scale = Math.max(1000 / img.width, 1000 / img.height);
                     let w = img.width * scale;
                     let h = img.height * scale;
                     let x = (1000 - w) / 2;
                     let y = (1000 - h) / 2;
+
                     ctx.drawImage(img, x, y, w, h);
                     
                     canvas.toBlob((blob) => {
                         resolve(blob);
-                    }, "image/jpeg", 0.92);
+                    }, "image/jpeg", 0.95);
                 };
                 img.src = e.target.result;
             };
